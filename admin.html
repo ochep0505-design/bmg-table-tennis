@@ -20,7 +20,7 @@ const stages=['Preliminaries','Playoffs','Quarterfinals','Semifinals','Finals'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function login(){const email=document.getElementById('email').value.trim(),password=document.getElementById('password').value;const{error}=await sb.auth.signInWithPassword({email,password});document.getElementById('loginMsg').textContent=error?error.message:'Signed in';if(!error)init()}
 async function logout(){await sb.auth.signOut();location.reload()}
-async function init(){loginCard.classList.add('hidden');app.classList.remove('hidden');logout.classList.remove('hidden');await load()}
+async function init(){loginCard.classList.add('hidden');app.document.getElementById('logout')?.classList.remove('hidden');;logout.classList.remove('hidden');await load()}
 async function load(){const[p,m]=await Promise.all([sb.from('players').select('*').order('id'),sb.from('matches').select('*').order('round').order('match_number')]);if(p.error||m.error){alert('Could not load tournament data.');return}players=p.data||[];matches=m.data||[];buildPlayerSearch();render()}
 function pname(id){return players.find(p=>Number(p.id)===Number(id))?.name||'?'}
 function sm(stage){
