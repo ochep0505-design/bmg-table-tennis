@@ -23,7 +23,37 @@ async function logout(){await sb.auth.signOut();location.reload()}
 async function init(){loginCard.classList.add('hidden');app.classList.remove('hidden');logout.classList.remove('hidden');await load()}
 async function load(){const[p,m]=await Promise.all([sb.from('players').select('*').order('id'),sb.from('matches').select('*').order('round').order('match_number')]);if(p.error||m.error){alert('Could not load tournament data.');return}players=p.data||[];matches=m.data||[];buildPlayerSearch();render()}
 function pname(id){return players.find(p=>Number(p.id)===Number(id))?.name||'?'}
-function sm(stage){return matches.filter(m=>(m.stage||'Preliminaries')===stage)}
+function sm(stage){
+  return matches.filter(m=>{
+    const savedStage=String(m.stage||'').trim().toLowerCase();
+
+    if(!savedStage){
+      return stage==='Preliminaries';
+    }
+
+    if(savedStage==='preliminary'||savedStage==='preliminaries'){
+      return stage==='Preliminaries';
+    }
+
+    if(savedStage==='playoff'||savedStage==='playoffs'){
+      return stage==='Playoffs';
+    }
+
+    if(savedStage==='quarterfinal'||savedStage==='quarterfinals'){
+      return stage==='Quarterfinals';
+    }
+
+    if(savedStage==='semifinal'||savedStage==='semifinals'){
+      return stage==='Semifinals';
+    }
+
+    if(savedStage==='final'||savedStage==='finals'){
+      return stage==='Finals';
+    }
+
+    return false;
+  });
+}
 function standings(){const map=Object.fromEntries(players.map(p=>[p.id,{...p,pts:0,w:0,l:0,p:0,pf:0,pa:0,pd:0}]));for(const m of sm('Preliminaries')){if(m.status!=='completed'||m.player1_score==null||m.player2_score==null)continue;const a=map[m.player1_id],b=map[m.player2_id];if(!a||!b)continue;a.p++;b.p++;a.pf+=m.player1_score;b.pf+=m.player2_score;a.pa+=m.player2_score;b.pa+=m.player1_score;if(m.player1_score>m.player2_score){a.w++;a.pts+=3;b.l++}else if(m.player2_score>m.player1_score){b.w++;b.pts+=3;a.l++}else{a.pts++;b.pts++}}return Object.values(map).map(x=>(x.pd=x.pf-x.pa,x)).sort((a,b)=>b.pts-a.pts||b.pd-a.pd||b.w-a.w||a.name.localeCompare(b.name))}
 function odds(s){const raw=s.map(x=>Math.max(.25,1+x.pts+.25*x.w-.25*x.l+.05*x.pd)),t=raw.reduce((a,b)=>a+b,0);return Object.fromEntries(s.map((x,i)=>[x.id,t/raw[i]]))}
 function buildPlayerSearch(){const opts='<option value="">Select player</option>'+players.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');findPlayer1.innerHTML=opts;findPlayer2.innerHTML=opts}
