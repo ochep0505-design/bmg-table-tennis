@@ -1,118 +1,13 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BMG TABLE TENNIS COMPETITION</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#14213d}
-header{background:linear-gradient(135deg,#071b45,#164b9b);color:#fff;padding:20px;text-align:center}
-header img{height:55px;max-width:180px;object-fit:contain;display:block;margin:0 auto 8px}
-h1{font-size:25px;margin:5px}.sub{opacity:.8;font-size:12px}
-main{max-width:1200px;margin:auto;padding:16px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px}
-button,input{padding:11px;border:1px solid #d5deeb;border-radius:10px;background:#fff;font:inherit}
-button{cursor:pointer;font-weight:bold}.primary{background:#0b2d67;color:white}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tabs button.active{background:#0b2d67;color:#fff}
-.card{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full{grid-column:1/-1}
-.notice{background:#eef5ff;border-radius:12px;padding:12px;margin:10px 0}
-.match{display:grid;grid-template-columns:50px 1fr 100px;gap:10px;padding:12px 0;border-bottom:1px solid #edf0f4;align-items:center}
-.num{font-size:12px;color:#738099}.players{font-weight:bold}.score{text-align:right;font-weight:bold}.pending{color:#b87900}
-table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid #edf0f4;font-size:13px}
-th{font-size:11px;color:#69758a}.empty{text-align:center;padding:18px;color:#68758d}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
-.stat{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px}.stat b{display:block;font-size:25px}
-.stat span{font-size:12px;color:#68758d}
-@media(max-width:800px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.stats{grid-template-columns:repeat(2,1fr)}.match{grid-template-columns:40px 1fr 85px}}
-</style>
-</head>
-<body>
-<header>
-<img src="credo-sponsor.png.png" alt="CREDO Sponsor">
-<h1>BMG TABLE TENNIS COMPETITION</h1>
-<div class="sub">16 players • 120 preliminary matches • Knockout stages</div>
-</header>
-<main>
-<div class="toolbar"><button class="primary" onclick="loadAll()">↻ Refresh</button><input id="search" placeholder="Search player" oninput="render()"></div>
-<div id="stats" class="stats"></div>
-<section class="card">
-<h2>Tournament stages</h2>
-<div id="tabs" class="tabs"></div>
-<div id="stageInfo"></div>
-<div id="stageMatches"></div>
-</section>
-<div class="grid">
-<section class="card"><h2>🏓 Current / Next Matches</h2><div id="current"></div></section>
-<section class="card"><h2>🏆 Preliminary Standings</h2><div style="overflow:auto"><table><thead><tr><th>#</th><th>Player</th><th>P</th><th>W</th><th>L</th><th>PF</th><th>PA</th><th>PD</th><th>PTS</th><th>Odds</th></tr></thead><tbody id="standings"></tbody></table></div></section>
-</div>
-</main>
-<script>
-const sb=supabase.createClient(window.BMG_SUPABASE_URL,window.BMG_SUPABASE_KEY);
-const stages=['Preliminaries','Playoffs','Quarterfinals','Semifinals','Finals'];
-let players=[],matches=[],stage='Preliminaries';
-
-function stageOf(m){return m.stage||'Preliminaries'}
-function done(m){return m.status==='completed'&&m.player1_score!=null&&m.player2_score!=null}
-function pname(id){return players.find(p=>Number(p.id)===Number(id))?.name||null}
-function safe(v){return String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function prelim(){return matches.filter(m=>stageOf(m)==='Preliminaries')}
-function standings(){
- const map=Object.fromEntries(players.map(p=>[p.id,{...p,p:0,w:0,l:0,pf:0,pa:0,pd:0,pts:0}]));
- prelim().filter(done).forEach(m=>{
-  let a=map[m.player1_id],b=map[m.player2_id];if(!a||!b)return;
-  a.p++;b.p++;a.pf+=+m.player1_score;b.pf+=+m.player2_score;
-  a.pa+=+m.player2_score;b.pa+=+m.player1_score;a.pd=a.pf-a.pa;b.pd=b.pf-b.pa;
-  if(+m.player1_score>+m.player2_score){a.w++;a.pts+=3;b.l++}
-  else if(+m.player2_score>+m.player1_score){b.w++;b.pts+=3;a.l++}
-  else{a.pts++;b.pts++}
- });
- return Object.values(map).sort((a,b)=>b.pts-a.pts||b.pd-a.pd||b.w-a.w||String(a.name).localeCompare(String(b.name)));
-}
-function winner(m){if(m.winner_id!=null)return m.winner_id;if(!done(m))return null;return +m.player1_score>+m.player2_score?m.player1_id:m.player2_id}
-function playoffWinner(n){let a=matches.filter(m=>stageOf(m)==='Playoffs').sort((a,b)=>a.match_number-b.match_number);return a[n]?winner(a[n]):null}
-function label(id,fallback){return id!=null?(pname(id)||fallback):fallback}
-function rowsFor(st){
- let rows=matches.filter(m=>stageOf(m)===st).sort((a,b)=>a.match_number-b.match_number);
- if(rows.length)return rows.map(m=>({m,one:label(m.player1_id,'Waiting for player'),two:label(m.player2_id,'Waiting for player'),num:m.match_number}));
- let s=standings();
- if(st==='Quarterfinals')return [
-  {one:label(s[0]?.id,'Top 1'),two:label(playoffWinner(3),'Waiting for Playoff 4 winner'),num:1},
-  {one:label(s[1]?.id,'Top 2'),two:label(playoffWinner(2),'Waiting for Playoff 3 winner'),num:2},
-  {one:label(s[2]?.id,'Top 3'),two:label(playoffWinner(1),'Waiting for Playoff 2 winner'),num:3},
-  {one:label(s[3]?.id,'Top 4'),two:label(playoffWinner(0),'Waiting for Playoff 1 winner'),num:4}
- ];
- if(st==='Semifinals')return [
-  {one:'Winner of Quarterfinal 1',two:'Winner of Quarterfinal 2',num:1},
-  {one:'Winner of Quarterfinal 3',two:'Winner of Quarterfinal 4',num:2}
- ];
- if(st==='Finals')return [{one:'Winner of Semifinal 1',two:'Winner of Semifinal 2',num:1}];
- return [];
-}
-function matchHTML(r){
- let m=r.m,d=m&&done(m);
- return `<div class="match"><div class="num">M${r.num}</div><div class="players">${safe(r.one)}<br><span style="font-size:12px;color:#68758d">vs</span><br>${safe(r.two)}</div><div class="score">${d?safe(m.player1_score+' – '+m.player2_score):'<span class="pending">PENDING</span>'}</div></div>`;
-}
-function render(){
- let s=standings(),q=(document.getElementById('search').value||'').toLowerCase(),allDone=matches.filter(done).length;
- document.getElementById('stats').innerHTML=`<div class="stat"><b>${allDone}</b><span>Matches completed</span></div><div class="stat"><b>${matches.length-allDone}</b><span>Matches pending</span></div><div class="stat"><b>${prelim().length}</b><span>Preliminary matches</span></div><div class="stat"><b>${s[0]?.pts||0}</b><span>Leader points</span></div>`;
- document.getElementById('tabs').innerHTML=stages.map(x=>`<button class="${x===stage?'active':''}" onclick="stage='${x}';render()">${x}</button>`).join('');
- let rows=rowsFor(stage);
- document.getElementById('stageInfo').innerHTML=(stage==='Quarterfinals'||stage==='Semifinals'||stage==='Finals')?'<div class="notice">Qualified players are shown now. Waiting placeholders will become player names when the earlier stage is completed.</div>':'';
- document.getElementById('stageMatches').innerHTML=rows.length?rows.map(matchHTML).join(''):'<div class="empty">No matches have been created for this stage yet.</div>';
- let current=stage==='Preliminaries'?prelim().filter(m=>!done(m)).map(m=>({m,one:label(m.player1_id,'Player 1'),two:label(m.player2_id,'Player 2'),num:m.match_number})):rows.filter(r=>!r.m||!done(r.m));
- document.getElementById('current').innerHTML=current.length?current.slice(0,8).map(matchHTML).join(''):'<div class="empty">No pending matches in this stage.</div>';
- let raw=s.map(x=>Math.max(.25,1+x.pts+.25*x.w-.25*x.l+.05*x.pd)),total=raw.reduce((a,b)=>a+b,0)||1;
- document.getElementById('standings').innerHTML=s.filter(x=>!q||String(x.name).toLowerCase().includes(q)).map((x,i)=>`<tr><td>${i+1}</td><td><b>${safe(x.name)}</b></td><td>${x.p}</td><td>${x.w}</td><td>${x.l}</td><td>${x.pf}</td><td>${x.pa}</td><td>${x.pd}</td><td><b>${x.pts}</b></td><td>${(total/raw[s.indexOf(x)]).toFixed(2)}</td></tr>`).join('');
-}
-async function loadAll(){
- let [p,m]=await Promise.all([sb.from('players').select('*').order('id'),sb.from('matches').select('*').order('round').order('match_number')]);
- if(p.error||m.error){document.getElementById('stageInfo').innerHTML='<div class="empty">Unable to load tournament records. Please refresh.</div>';return}
- players=p.data||[];matches=m.data||[];render();
-}
-sb.channel('bmg-public-live').on('postgres_changes',{event:'*',schema:'public',table:'matches'},loadAll).subscribe();
-loadAll();
-</script>
-</body>
-</html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BMG TABLE TENNIS COMPETITION</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script><style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f4f7fb;color:#14213d}header{background:linear-gradient(135deg,#071b45,#164b9b);color:#fff;padding:22px 18px;position:sticky;top:0;z-index:5}.head{max-width:1180px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:15px}.brand{font-size:25px;font-weight:950}.sub{opacity:.78;font-size:12px;margin-top:3px}.live{background:#13b477;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900}.wrap{max-width:1180px;margin:auto;padding:18px}.toolbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px}.btn,.select,.search{border:1px solid #dbe2ec;border-radius:11px;padding:11px 13px;background:#fff;font:inherit}.btn{cursor:pointer;font-weight:850}.primary{background:#0b2d67;color:#fff;border-color:#0b2d67}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.card{background:#fff;border:1px solid #e3e8f0;border-radius:18px;padding:17px;box-shadow:0 5px 20px #15284d0b;margin-bottom:16px}.title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}.title h2{font-size:18px;margin:0}.muted{color:#68758d;font-size:13px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{border:1px solid #e3e8f0;border-radius:14px;padding:13px}.stat b{display:block;font-size:25px}.stat span{font-size:11px;color:#6d7890}.match{display:grid;grid-template-columns:55px 1fr 110px;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid #edf0f4}.match:last-child{border-bottom:0}.mnum{font-size:11px;color:#77839a;font-weight:850}.players{font-weight:850}.score{font-weight:950;text-align:right}.next{border:2px solid #1a74e8;background:#f7fbff}.table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;padding:9px 7px;border-bottom:1px solid #edf0f4;font-size:13px}.table th{font-size:11px;color:#69758a}.rank{font-weight:950}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef3fa;font-size:11px;font-weight:800}.empty{padding:18px;text-align:center;color:#68758d}.search{min-width:220px}.full{grid-column:1/-1}@media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.head{align-items:flex-start}.brand{font-size:20px}.wrap{padding:12px}.match{grid-template-columns:45px 1fr 80px}}
+</style></head><body><header> <img src="credo-sponsor.png.png" alt="CREDO Sponsor" style="height:60px;max-width:180px;object-fit:contain;margin:10px auto;display:block"><div class="head"><div><div class="brand">BMG TABLE TENNIS COMPETITION</div><div class="sub">16 players • 15 rounds • 120 matches</div></div><div class="live">● LIVE</div></div></header><main class="wrap"><div class="toolbar"><button class="btn primary" onclick="loadAll()">↻ Refresh</button><select id="round" class="select" onchange="renderRound()"></select><input id="search" class="search" placeholder="Search player" oninput="renderAll()"></div><section class="stats" id="stats"></section><div class="grid"><section class="card"><div class="title"><h2>🏓 Current / Next Matches</h2><span class="muted" id="roundLabel"></span></div><div id="nextMatches"></div></section><section class="card"><div class="title"><h2>🏆 Standings</h2><span class="muted">3 / 1 / 0 points</span></div><div style="overflow:auto"><table class="table"><thead><tr><th>#</th><th>Player</th><th>P</th><th>W</th><th>L</th><th>PF</th><th>PA</th><th>PD</th><th>PTS</th><th>Odds</th></tr></thead><tbody id="standings"></tbody></table></div></section><section class="card full"><div class="title"><h2>📅 Round Schedule</h2><span class="muted">Completed results appear automatically</span></div><div id="roundMatches"></div></section></div></main><script>
+const sb=supabase.createClient(window.BMG_SUPABASE_URL,window.BMG_SUPABASE_KEY);let players=[],matches=[],settings={active_round:1};
+async function loadAll(){const [p,m,s]=await Promise.all([sb.from('players').select('*').order('id'),sb.from('matches').select('*').order('round').order('match_number'),sb.from('tournament_settings').select('*').eq('id',1).single()]);if(p.error||m.error||s.error){document.body.innerHTML='<div style="padding:30px;font-family:system-ui"><h2>Unable to load tournament</h2><p>Please refresh the page.</p></div>';return}players=p.data;matches=m.data;settings=s.data;buildRoundSelect();renderAll()}
+function buildRoundSelect(){const el=document.getElementById('round'),old=+el.value||settings.active_round;el.innerHTML='';for(let r=1;r<=15;r++){const o=document.createElement('option');o.value=r;o.textContent='Round '+r+(r===settings.active_round?' • ACTIVE':'');el.appendChild(o)}el.value=Math.min(old,15)}
+function standings(){const map=Object.fromEntries(players.map(p=>[p.id,{...p,pts:0,w:0,l:0,p:0,pf:0,pa:0,pd:0}]));for(const m of matches){if(m.status!=='completed'||m.player1_score==null||m.player2_score==null)continue;const a=map[m.player1_id],b=map[m.player2_id];a.p++;b.p++;a.pf+=m.player1_score;b.pf+=m.player2_score;a.pa+=m.player2_score;b.pa+=m.player1_score;a.pd=a.pf-a.pa;b.pd=b.pf-b.pa;if(m.player1_score>m.player2_score){a.w++;a.pts+=3;b.l++}else if(m.player2_score>m.player1_score){b.w++;b.pts+=3;a.l++}else{a.pts++;b.pts++}}return Object.values(map).sort((a,b)=>b.pts-a.pts||b.pd-a.pd||b.w-a.w||a.name.localeCompare(b.name))}
+function renderAll(){const s=standings(),o=odds(s),q=(document.getElementById('search').value||'').toLowerCase();document.getElementById('stats').innerHTML=`<div class="stat"><b>${matches.filter(m=>m.status==='completed').length}</b><span>Matches completed</span></div><div class="stat"><b>${120-matches.filter(m=>m.status==='completed').length}</b><span>Matches remaining</span></div><div class="stat"><b>${settings.active_round}</b><span>Active round</span></div><div class="stat"><b>${s[0]?.pts||0}</b><span>Leader points</span></div>`;document.getElementById('standings').innerHTML=s.filter(x=>!q||x.name.toLowerCase().includes(q)).map((x,i)=>`<tr><td class="rank">${i+1}</td><td><b>${x.name}</b></td><td>${x.p}</td><td>${x.w}</td><td>${x.l}</td><td>${x.pf}</td><td>${x.pa}</td><td>${x.pd}</td><td><b>${x.pts}</b></td><td>${o[x.id].toFixed(2)}</td></tr>`).join('')||'<tr><td colspan="10" class="empty">No player found</td></tr>';renderRound();renderNext()}
+function odds(s){const raw=s.map(x=>Math.max(.25,1+x.pts+.25*x.w-.25*x.l+.05*x.pd));const total=raw.reduce((a,b)=>a+b,0);return Object.fromEntries(s.map((x,i)=>[x.id,total/raw[i]]))}function name(id){return players.find(p=>p.id===id)?.name||'?'}
+function renderNext(){const r=settings.active_round,ms=matches.filter(m=>m.round===r),pending=ms.filter(m=>m.status!=='completed');document.getElementById('roundLabel').textContent='Round '+r;document.getElementById('nextMatches').innerHTML=(pending.length?pending:ms).map(m=>`<div class="match ${m.id===(pending[0]?.id)?'next':''}"><div class="mnum">M${m.match_number}</div><div class="players">${name(m.player1_id)}<br>vs<br>${name(m.player2_id)}</div><div class="score">${m.status==='completed'?`${m.player1_score} – ${m.player2_score}`:'UP NEXT'}</div></div>`).join('')||'<div class="empty">Round complete</div>'}
+function renderRound(){const r=+document.getElementById('round').value||settings.active_round,ms=matches.filter(m=>m.round===r);document.getElementById('roundMatches').innerHTML=ms.map(m=>`<div class="match"><div class="mnum">M${m.match_number}</div><div class="players">${name(m.player1_id)} <span class="muted">vs</span> ${name(m.player2_id)}</div><div class="score">${m.status==='completed'?`${m.player1_score} – ${m.player2_score}`:'Pending'}</div></div>`).join('')}
+sb.channel('bmg-live').on('postgres_changes',{event:'*',schema:'public',table:'matches'},()=>loadAll()).on('postgres_changes',{event:'*',schema:'public',table:'tournament_settings'},()=>loadAll()).subscribe();loadAll();
+</script></body></html>
